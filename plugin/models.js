@@ -2,12 +2,14 @@
 // Pure functions: used by index.js in Photoshop and by tests/ under node.
 
 const AUTO = "auto";
-const TEMPLATES = ["flux2_clean", "flux2_edit", "kontext_clean", "kontext_edit", "fill_clean"];
+const TEMPLATES = ["flux2_clean", "flux2_edit", "flux3_clean", "flux3_edit", "kontext_clean", "kontext_edit", "fill_clean"];
 
-// family from the file name; models that match nothing aren't offered
+// family from the file name; models that match nothing aren't offered.
+// flux3 first: "flux3-image-klein-*" also matches the flux2 "klein" pattern
 function family(name) {
   if (/fill/i.test(name)) return "fill";
   if (/kontext/i.test(name)) return "kontext";
+  if (/flux[-_.]?3/i.test(name)) return "flux3";
   if (/klein|flux[-_.]?2/i.test(name)) return "flux2";
   return null;
 }
@@ -33,7 +35,7 @@ function listModels(info) {
     let cls = "UNETLoader", input = "unet_name";
     if (/\.gguf$/i.test(name)) cls = "UnetLoaderGGUF";
     else if (NUNCHAKU.test(name)) [cls, input] = ["NunchakuFluxDiTLoader", "model_path"]; // Flux.1 only
-    if (!info[cls] || (cls === "NunchakuFluxDiTLoader" && fam === "flux2")) continue; // loader not installed / can't load it
+    if (!info[cls] || (cls === "NunchakuFluxDiTLoader" && (fam === "flux2" || fam === "flux3"))) continue; // loader not installed / can't load it
     out.push({ name, cls, input, family: fam, nunchaku: cls === "NunchakuFluxDiTLoader" });
   }
   return out;
@@ -44,6 +46,11 @@ const encoderList = (info) => (info.CLIPLoaderGGUF ? options(info, "CLIPLoaderGG
 const vaeList = (info) => options(info, "VAELoader", "vae_name").filter((n) => !/^(taes|taef|pixel_space)/.test(n));
 
 function pickEncoders(fam, model, list) {
+  if (fam === "flux3") {
+    // Qwen3-VL-4B. The prompt upsampler (qwen3.5_9b_flux3_*) is a second LLM, not the text encoder
+    const vl = list.filter((n) => /qwen[-_.]?3[-_.]?vl/i.test(n) && !/upsampl/i.test(n));
+    return { main: vl.find((n) => /4b/i.test(n)) };
+  }
   if (fam === "flux2") {
     const size = /4b/i.test(model) ? "4b" : "8b"; // Klein 4B -> Qwen3-4B, Klein 9B -> Qwen3-8B
     const qwen = list.filter((n) => /qwen[-_]?3/i.test(n) && !/vl/i.test(n));
@@ -56,7 +63,7 @@ function pickEncoders(fam, model, list) {
 }
 
 function pickVae(fam, list) {
-  if (fam === "flux2") return list.find((n) => /flux[-_.]?2/i.test(n));
+  if (fam === "flux2" || fam === "flux3") return list.find((n) => /flux[-_.]?2/i.test(n)); // Flux.3 uses the Flux.2 VAE
   return list.find((n) => /^ae\.(safetensors|sft|pt)$/i.test(n))
     || list.find((n) => /flux/i.test(n) && /vae|ae/i.test(n) && !/flux[-_.]?2/i.test(n));
 }
@@ -65,13 +72,16 @@ function pickVae(fam, list) {
 function resolve(info, sel) {
   const model = listModels(info).find((m) => m.name === sel.model);
   if (!model) throw new Error(`Model "${sel.model}" not found in ComfyUI.`);
-  const auto = pickEncoders(model.family, model.name, encoderList(info));
+  const fam = model.family, single = fam === "flux2" || fam === "flux3"; // one text encoder, no clip_l
+  const auto = pickEncoders(fam, model.name, encoderList(info));
   const enc = { main: sel.clip && sel.clip !== AUTO ? sel.clip : auto.main, clipL: auto.clipL };
-  const vae = sel.vae && sel.vae !== AUTO ? sel.vae : pickVae(model.family, vaeList(info));
+  const vae = sel.vae && sel.vae !== AUTO ? sel.vae : pickVae(fam, vaeList(info));
   const get = " Download link in Settings.";
-  if (!enc.main) throw new Error((model.family === "flux2" ? `No Qwen3-${/4b/i.test(model.name) ? "4B" : "8B"} text encoder found for this Klein model.` : "No T5-XXL text encoder found for Flux.1.") + get);
-  if (model.family !== "flux2" && !enc.clipL) throw new Error("No clip_l text encoder found for Flux.1." + get);
-  if (!vae) throw new Error((model.family === "flux2" ? "No Flux.2 VAE found (flux2-vae)." : "No Flux.1 VAE found (ae.safetensors).") + get);
+  if (!enc.main) throw new Error((fam === "flux2" ? `No Qwen3-${/4b/i.test(model.name) ? "4B" : "8B"} text encoder found for this Klein model.`
+    : fam === "flux3" ? "No Qwen3-VL 4B text encoder found for this Flux.3 model."
+    : "No T5-XXL text encoder found for Flux.1.") + get);
+  if (!single && !enc.clipL) throw new Error("No clip_l text encoder found for Flux.1." + get);
+  if (!vae) throw new Error((single ? "No Flux.2 VAE found (flux2-vae)." : "No Flux.1 VAE found (ae.safetensors).") + get);
   return { model, enc, vae };
 }
 
@@ -107,7 +117,7 @@ function missingNodes(info, files, coreNodes) {
   if (!info.UnetLoaderGGUF && (hasGguf || !listModels(info).length)) {
     out.push({ ...PACKS.gguf, required: true, why: hasGguf ? "your .gguf models need it" : "no usable model found; .gguf models need it" });
   }
-  if (!info.NunchakuFluxDiTLoader && files.some((n) => NUNCHAKU.test(n) && family(n) && family(n) !== "flux2")) {
+  if (!info.NunchakuFluxDiTLoader && files.some((n) => NUNCHAKU.test(n) && family(n) && family(n) !== "flux2" && family(n) !== "flux3")) {
     out.push({ ...PACKS.nunchaku, required: true, why: "your svdq (Nunchaku) models need it" });
   }
   if (!info.INPAINT_ColorMatch) out.push({ ...PACKS.inpaint, required: true, why: "Clean's color match needs it" });
@@ -119,6 +129,8 @@ const HF = "https://huggingface.co/";
 const DOWNLOADS = {
   qwen4b: { name: "qwen_3_4b.safetensors", folder: "text_encoders", url: HF + "Comfy-Org/flux2-klein-4B/blob/main/split_files/text_encoders/qwen_3_4b.safetensors" },
   qwen8b: { name: "qwen_3_8b_fp8mixed.safetensors", folder: "text_encoders", url: HF + "Comfy-Org/flux2-klein-9B/blob/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors" },
+  // Flux.3's Qwen3-VL encoder is in a gated repo: accept the license on the page before downloading
+  qwen3vl: { name: "qwen3vl_4b_int8_convrot.safetensors", folder: "text_encoders", url: HF + "black-forest-labs/flux-3-image-klein-comfy/blob/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors" },
   flux2vae: { name: "flux2-vae.safetensors", folder: "vae", url: HF + "Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors" },
   t5: { name: "t5xxl_fp8_e4m3fn_scaled.safetensors", folder: "text_encoders", url: HF + "comfyanonymous/flux_text_encoders/blob/main/t5xxl_fp8_e4m3fn_scaled.safetensors" },
   clipL: { name: "clip_l.safetensors", folder: "text_encoders", url: HF + "comfyanonymous/flux_text_encoders/blob/main/clip_l.safetensors" },
@@ -133,10 +145,14 @@ const DOWNLOADS = {
 function missingFiles(info, sel) {
   const m = listModels(info).find((x) => x.name === sel.model);
   if (!m) return [];
-  const flux2 = m.family === "flux2", auto = pickEncoders(m.family, m.name, encoderList(info)), out = [];
-  const enc = (flux2 ? (/4b/i.test(m.name) ? "qwen4b" : "qwen8b") : "t5") + (info.CLIPLoaderGGUF ? "Gguf" : "");
-  if ((!sel.clip || sel.clip === AUTO) && !auto.main) out.push(DOWNLOADS[enc]);
-  if (!flux2 && !auto.clipL) out.push(DOWNLOADS.clipL); // Flux.1's clip_l is always picked automatically
+  const flux2 = m.family === "flux2" || m.family === "flux3", auto = pickEncoders(m.family, m.name, encoderList(info)), out = [];
+  if (m.family === "flux3") {
+    if ((!sel.clip || sel.clip === AUTO) && !auto.main) out.push(DOWNLOADS.qwen3vl);
+  } else {
+    const enc = (m.family === "flux2" ? (/4b/i.test(m.name) ? "qwen4b" : "qwen8b") : "t5") + (info.CLIPLoaderGGUF ? "Gguf" : "");
+    if ((!sel.clip || sel.clip === AUTO) && !auto.main) out.push(DOWNLOADS[enc]);
+    if (!flux2 && !auto.clipL) out.push(DOWNLOADS.clipL); // Flux.1's clip_l is always picked automatically
+  }
   if ((!sel.vae || sel.vae === AUTO) && !pickVae(m.family, vaeList(info))) out.push(flux2 ? DOWNLOADS.flux2vae : DOWNLOADS.ae);
   return out;
 }
@@ -159,13 +175,21 @@ function buildGraph(info, templates, opts) {
   const { model, enc, vae } = resolve(info, opts);
   if (opts.edit && model.family === "fill") throw new Error("Fill models only inpaint. Use Clean mode, or an edit model (Klein / Kontext) for Edit.");
   const g = JSON.parse(JSON.stringify(templates[`${model.family}_${opts.edit ? "edit" : "clean"}`]));
+  // Flux.3 Klein: the checkpoint's own sampler defaults (distilled 16 steps at CFG 1, base 50 at 3.5); Settings' Steps overrides the steps
+  if (model.family === "flux3") {
+    const base = /base/i.test(model.name);
+    for (const n of Object.values(g)) if (n.class_type === "KSampler") {
+      if (opts.steps <= 0) n.inputs.steps = base ? 50 : 16;
+      n.inputs.cfg = base ? 3.5 : 1;
+    }
+  }
 
   g["1"] = withDefaults(info, model.nunchaku
     ? { class_type: model.cls, inputs: { [model.input]: model.name } }
     : { class_type: model.cls, inputs: { unet_name: model.name, ...(model.cls === "UNETLoader" ? { weight_dtype: "default" } : {}) } });
   const gguf = info.CLIPLoaderGGUF && [enc.main, enc.clipL].some((n) => /\.gguf$/i.test(n || ""));
-  g["2"] = model.family === "flux2"
-    ? { class_type: gguf ? "CLIPLoaderGGUF" : "CLIPLoader", inputs: { clip_name: enc.main, type: "flux2" } }
+  g["2"] = model.family === "flux2" || model.family === "flux3"
+    ? { class_type: gguf ? "CLIPLoaderGGUF" : "CLIPLoader", inputs: { clip_name: enc.main, type: model.family } }
     : { class_type: gguf ? "DualCLIPLoaderGGUF" : "DualCLIPLoader", inputs: { clip_name1: enc.main, clip_name2: enc.clipL, type: "flux" } };
   g["3"] = { class_type: "VAELoader", inputs: { vae_name: vae } };
 

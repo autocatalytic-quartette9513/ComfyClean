@@ -360,7 +360,7 @@ const clampRect = (b, doc) => ({
   right: Math.min(doc.width, Math.ceil(b.right)), bottom: Math.min(doc.height, Math.ceil(b.bottom)),
 });
 
-// model list = every Klein / Kontext / Fill file ComfyUI can load (GGUF, safetensors, Nunchaku);
+// model list = every Klein (Flux.2 / Flux.3) / Kontext / Fill file ComfyUI can load (GGUF, safetensors, Nunchaku);
 // text encoder and VAE default to "Auto" = picked per model family by models.js.
 // ComfyUI offline -> the same lists read from the ComfyUI folder on disk. Returns true when ComfyUI is live.
 async function loadModels() {
@@ -379,11 +379,11 @@ async function loadModels() {
     const want = prev || load(id) || (auto ? models.AUTO : "flux-2-klein-9b-Q4_K_S.gguf");
     setVal(id, items.some((it) => it.value === want) ? want : items[0] && items[0].value);
   };
-  const tag = { flux2: "Klein", kontext: "Kontext", fill: "Fill" };
+  const tag = { flux2: "Klein", flux3: "Flux.3 Klein", kontext: "Kontext", fill: "Fill" };
   const list = models.listModels(listInfo);
   if (!list.length) {
     throw new Error(install ? `No usable model. Install in ComfyUI: ${install} (links in Settings).`
-      : `No Flux.2 Klein, Kontext or Fill model found in ${live ? "ComfyUI" : "the ComfyUI models folder"}.`);
+      : `No Flux.2 / Flux.3 Klein, Kontext or Fill model found in ${live ? "ComfyUI" : "the ComfyUI models folder"}.`);
   }
   fill("model", list.map((m) => ({ value: m.name, label: `${m.name}  (${tag[m.family]}${m.nunchaku ? ", Nunchaku" : ""})` })));
   mirrorModels();

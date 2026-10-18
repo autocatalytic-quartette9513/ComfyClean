@@ -12,7 +12,7 @@ Select the text, the bubble, the SFX or the watermark → click once → get a c
 
 [![Photoshop](https://img.shields.io/badge/Photoshop-2022%20→%202026-31A8FF?style=for-the-badge&logo=adobephotoshop&logoColor=white)](#-install)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-100%25%20local-4b8ef5?style=for-the-badge)](https://github.com/comfyanonymous/ComfyUI)
-[![Flux](https://img.shields.io/badge/Flux.2%20Klein%20·%20Kontext%20·%20Fill-8a6cf0?style=for-the-badge)](#-models)
+[![Flux](https://img.shields.io/badge/Flux.2%20·%20Flux.3%20Klein%20·%20Kontext%20·%20Fill-8a6cf0?style=for-the-badge)](#-models)
 [![UXP](https://img.shields.io/badge/Adobe-UXP%20plugin-ff3366?style=for-the-badge&logo=adobe&logoColor=white)](#-install)
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=for-the-badge&logo=windows&logoColor=white)](#-requirements)
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fesmail-mkh%2FComfyClean%2FHEAD%2Fplugin%2Fmanifest.json&query=%24.version&label=version&color=34c486&style=for-the-badge)](plugin/manifest.json)
@@ -121,14 +121,17 @@ Press **＋** to save the current prompt as your own preset, **－** to delete t
 
 | Family | 🧹 Clean | ✏️ Edit | Text encoder | Notes |
 |---|:-:|:-:|---|---|
+| **Flux.3 Klein (5.6B)** | ✅ | ✅ | Qwen3-VL-4B | Newest, best quality; 4–16 steps |
 | **Flux.2 Klein 4B** | ✅ | ✅ | Qwen3-4B | Fast, light on VRAM |
 | **Flux.2 Klein 9B** | ✅ | ✅ | Qwen3-8B | Higher quality |
 | **Flux.1 Kontext** | ✅ | ✅ | T5-XXL + clip_l | |
 | **Flux.1 Fill** | ✅ | ❌ | T5-XXL + clip_l | Inpaint only |
 
-- 🔎 The family is detected from the file name: `klein` / `flux2`, `kontext`, `fill`. Other models are not listed.
+- 🔎 The family is detected from the file name: `flux3`, `klein` / `flux2`, `kontext`, `fill`. Other models are not listed.
+- 🧩 **Flux.3 Klein needs ComfyUI 0.41 or newer** (the panel says so if it is too old) and the Qwen3-VL 4B encoder (`qwen3vl_4b_*.safetensors`); it uses the same `flux2-vae.safetensors`. Settings links the exact files when one is missing.
+- 💬 Flux.3 writes the result, not the change: the built-in presets are written that way and work as-is. A bare one-line instruction ("remove this") can leave faint ghosting — describe the clean image instead.
 - 📦 Formats: plain `.safetensors`, **GGUF** and **Nunchaku** `svdq` (Flux.1 only).
-- 🎛️ Steps default to the model's own value. Change them in Settings if you want.
+- 🎛️ Steps default to the model's own value. Change them in Settings if you want. Flux.3 runs 16 steps (distilled) or 50 (base) automatically.
 
 ## 📋 Requirements
 
@@ -219,6 +222,12 @@ The text encoder size must match the model: **Klein 4B → Qwen3-4B**, **Klein 9
 </details>
 
 <details>
+<summary>🆕 Flux.3: "Update ComfyUI (missing ReferenceMultiLatent)"</summary>
+
+FLUX 3 Klein needs **ComfyUI 0.41 or newer** (the `Set Reference Multi Latent` node ships with it). Update ComfyUI, restart it, then pick the model again. Its text encoder is Qwen3-VL 4B (`qwen3vl_4b_*.safetensors`) and it reuses the Flux.2 VAE; Settings links the exact files if one is missing.
+</details>
+
+<details>
 <summary>🚫 "Fill models only inpaint"</summary>
 
 Flux.1 Fill cannot do Edit. Use **Clean**, or pick a Klein / Kontext model for Edit.
@@ -272,7 +281,7 @@ tests/              node and python checks
 
 ## 🛠️ Built with
 
-🟦 Adobe **UXP** (Photoshop Imaging API) · 🟨 plain **JavaScript**, no build step, no dependencies · 🧩 **ComfyUI** API + WebSocket · 🤖 **Flux.2 Klein / Flux.1 Kontext / Flux.1 Fill**
+🟦 Adobe **UXP** (Photoshop Imaging API) · 🟨 plain **JavaScript**, no build step, no dependencies · 🧩 **ComfyUI** API + WebSocket · 🤖 **Flux.3 / Flux.2 Klein / Flux.1 Kontext / Flux.1 Fill**
 
 ---
 
@@ -370,14 +379,17 @@ flowchart LR
 
 | خانواده | 🧹 Clean | ✏️ Edit | انکودر متن | توضیح |
 |---|:-:|:-:|---|---|
+| **Flux.3 Klein (5.6B)** | ✅ | ✅ | Qwen3-VL-4B | جدیدترین و باکیفیت‌ترین؛ ۴ تا ۱۶ استپ |
 | **Flux.2 Klein 4B** | ✅ | ✅ | Qwen3-4B | سریع و کم‌مصرف برای VRAM |
 | **Flux.2 Klein 9B** | ✅ | ✅ | Qwen3-8B | کیفیت بالاتر |
 | **Flux.1 Kontext** | ✅ | ✅ | T5-XXL و clip_l | |
 | **Flux.1 Fill** | ✅ | ❌ | T5-XXL و clip_l | فقط inpaint |
 
-- 🔎 خانواده از روی نام فایل تشخیص داده می‌شود: `klein` / `flux2`، `kontext`، `fill`. مدل‌های دیگر در فهرست نمی‌آیند.
+- 🔎 خانواده از روی نام فایل تشخیص داده می‌شود: `flux3`، `klein` / `flux2`، `kontext`، `fill`. مدل‌های دیگر در فهرست نمی‌آیند.
+- 🧩 **Flux.3 Klein به ComfyUI نسخهٔ 0.41 یا بالاتر نیاز دارد** (اگر قدیمی باشد، خود پنل می‌گوید) و انکودر Qwen3-VL 4B با نام `qwen3vl_4b_*.safetensors`؛ همان VAE مدل Flux.2 یعنی `flux2-vae.safetensors` را استفاده می‌کند. اگر فایلی کم باشد، Settings لینک دقیقش را نشان می‌دهد.
+- 💬 Flux.3 نتیجه را می‌نویسد، نه تغییر را: پرامپت‌های آمادهٔ پلاگین همین‌طور نوشته شده‌اند و بدون تغییر کار می‌کنند. یک دستور یک‌خطی مثل «این را حذف کن» ممکن است شبح کمرنگی جا بگذارد؛ به‌جایش تصویر تمیز را توصیف کنید.
 - 📦 قالب‌ها: `.safetensors` معمولی، **GGUF** و **Nunchaku** با نام `svdq` (فقط Flux.1).
-- 🎛️ تعداد Steps پیش‌فرض خود مدل است و در Settings قابل تغییر است.
+- 🎛️ تعداد Steps پیش‌فرض خود مدل است و در Settings قابل تغییر است. Flux.3 خودکار ۱۶ استپ (distilled) یا ۵۰ استپ (base) اجرا می‌شود.
 
 ## 📋 پیش‌نیازها
 
@@ -472,6 +484,12 @@ Settings نام دقیق فایل‌ها و لینکشان را نشان می‌
 </details>
 
 <details>
+<summary>🆕 Flux.3: پیام «Update ComfyUI (missing ReferenceMultiLatent)»</summary>
+
+مدل FLUX 3 Klein به **ComfyUI نسخهٔ 0.41 یا بالاتر** نیاز دارد (نود `Set Reference Multi Latent` همراه همان نسخه عرضه شده). ComfyUI را به‌روز کنید، دوباره اجرایش کنید و مدل را از نو انتخاب کنید. انکودر متنش Qwen3-VL 4B است (`qwen3vl_4b_*.safetensors`) و از همان VAE مدل Flux.2 استفاده می‌کند؛ اگر فایلی کم باشد Settings لینکش را نشان می‌دهد.
+</details>
+
+<details>
 <summary>🚫 «Fill models only inpaint»</summary>
 
 Flux.1 Fill نمی‌تواند Edit انجام بدهد. از **Clean** استفاده کنید، یا برای Edit یک مدل Klein / Kontext انتخاب کنید.
@@ -533,7 +551,7 @@ tests/              node and python checks
 
 ## 🛠️ ساخته‌شده با
 
-🟦 **UXP** ادوبی (Imaging API فتوشاپ) · 🟨 **JavaScript** ساده، بدون build و بدون وابستگی · 🧩 **ComfyUI** (API و WebSocket) · 🤖 **Flux.2 Klein / Flux.1 Kontext / Flux.1 Fill**
+🟦 **UXP** ادوبی (Imaging API فتوشاپ) · 🟨 **JavaScript** ساده، بدون build و بدون وابستگی · 🧩 **ComfyUI** (API و WebSocket) · 🤖 **Flux.3 / Flux.2 Klein / Flux.1 Kontext / Flux.1 Fill**
 
 </div>
 

@@ -11,9 +11,10 @@ const templates = Object.fromEntries(M.TEMPLATES.map((t) =>
 const combo = (list) => [list];
 // Like the real nodes: UNETLoader and NunchakuFluxDiTLoader both list every .safetensors in diffusion_models
 // (ComfyUI-nunchaku nodes/models/flux.py), GGUF loader lists .gguf too.
-const SAFETENSORS = ["flux1-kontext-dev-fp8.safetensors", "svdq-int4_r32-flux.1-fill-dev.safetensors", "svdq-int4_r32-flux.1-kontext-dev.safetensors"];
+const SAFETENSORS = ["flux1-kontext-dev-fp8.safetensors", "svdq-int4_r32-flux.1-fill-dev.safetensors", "svdq-int4_r32-flux.1-kontext-dev.safetensors",
+  "flux3-image-klein-int8-convert.safetensors", "flux3-image-klein-base-bf16.safetensors"];
 const fake = {
-  UnetLoaderGGUF: { input: { required: { unet_name: combo(["flux-2-klein-4b-Q5_K_M.gguf", "flux-2-klein-9b-Q4_K_S.gguf", "flux1-fill-dev-Q4_K.gguf", "qwen-image-2.1-Q4_K_M.gguf", ...SAFETENSORS]) } } },
+  UnetLoaderGGUF: { input: { required: { unet_name: combo(["flux-2-klein-4b-Q5_K_M.gguf", "flux-2-klein-9b-Q4_K_S.gguf", "flux-3-image-klein-UD-Q4_K_XL.gguf", "flux1-fill-dev-Q4_K.gguf", "qwen-image-2.1-Q4_K_M.gguf", ...SAFETENSORS]) } } },
   UNETLoader: { input: { required: { unet_name: combo(SAFETENSORS), weight_dtype: combo(["default", "fp8_e4m3fn"]) } } },
   NunchakuFluxDiTLoader: { input: { required: {
     model_path: combo(SAFETENSORS),
@@ -23,7 +24,7 @@ const fake = {
     device_id: ["INT", { default: 0, lazy: true }],
     data_type: [["bfloat16", "float16"], { default: "bfloat16" }],
   }, optional: { i2f_mode: [["enabled", "always"], { default: "enabled" }] } } },
-  CLIPLoaderGGUF: { input: { required: { clip_name: combo(["Qwen3-4B-Q5_K_M.gguf", "Qwen3-8B-Q4_K_M.gguf", "qwen3vl_8b_x.safetensors", "clip_l.safetensors", "t5xxl_fp8_e4m3fn.safetensors", "t5-v1_1-xxl-encoder-Q5_K_S.gguf"]) } } },
+  CLIPLoaderGGUF: { input: { required: { clip_name: combo(["Qwen3-4B-Q5_K_M.gguf", "Qwen3-8B-Q4_K_M.gguf", "qwen3vl_4b_int8_convrot.safetensors", "qwen3vl_8b_x.safetensors", "qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors", "clip_l.safetensors", "t5xxl_fp8_e4m3fn.safetensors", "t5-v1_1-xxl-encoder-Q5_K_S.gguf"]) } } },
   VAELoader: { input: { required: { vae_name: combo(["Qwen_Image-VAE.safetensors", "ae.safetensors", "flux2-vae.safetensors", "taef1"]) } } },
   INPAINT_ColorMatch: { input: { required: {} } }, // comfyui-inpaint-nodes (required by Clean)
 };
@@ -40,10 +41,10 @@ function build(info, model, edit, extra = {}) {
   return M.buildGraph(info, templates, { model, clip: M.AUTO, vae: M.AUTO, steps: 0, edit, image: "a.jpg [temp]", mask: "m.jpg [temp]", prompt: "remove text", seed: 7, ...extra });
 }
 
-// unsupported families stay out of the list
+// unsupported families stay out of the list; Nunchaku can't load the Flux.2/3 safetensors it lists
 const names = M.listModels(fake).map((m) => m.name);
 assert.ok(!names.includes("qwen-image-2.1-Q4_K_M.gguf"));
-assert.strictEqual(names.length, 6);
+assert.strictEqual(names.length, 9);
 
 // Klein: right Qwen size, flux2 VAE, GGUF clip loader
 let g = build(fake, "flux-2-klein-4b-Q5_K_M.gguf", false);
@@ -51,6 +52,24 @@ assert.deepStrictEqual([g["2"].class_type, g["2"].inputs.clip_name, g["3"].input
 g = build(fake, "flux-2-klein-9b-Q4_K_S.gguf", true);
 assert.strictEqual(g["2"].inputs.clip_name, "Qwen3-8B-Q4_K_M.gguf");
 assert.ok(!g["20"], "edit graph has no mask");
+
+// Flux.3 Klein: Qwen3-VL 4B encoder, CLIPLoader type flux3, the Flux.2 VAE; distilled samples at 16 steps / CFG 1
+g = build(fake, "flux-3-image-klein-UD-Q4_K_XL.gguf", false);
+assert.deepStrictEqual([g["1"].class_type, g["2"].class_type, g["2"].inputs.clip_name, g["2"].inputs.type, g["3"].inputs.vae_name],
+  ["UnetLoaderGGUF", "CLIPLoader", "qwen3vl_4b_int8_convrot.safetensors", "flux3", "flux2-vae.safetensors"]);
+assert.deepStrictEqual([g["12"].class_type, g["12"].inputs.steps, g["12"].inputs.cfg], ["KSampler", 16, 1]);
+assert.deepStrictEqual([g["10"].inputs.positive, g["10"].inputs.negative, g["10"].inputs["images.image0"], g["10"].inputs.resolution],
+  [["7", 0], ["8", 0], ["5", 0], "keep resolution"], "conditioning gets the crop as its reference");
+assert.deepStrictEqual(g["21"].inputs, { samples: ["9", 0], mask: ["20", 0] }, "clean starts from the masked crop latent");
+checkLinks(g, "flux3 clean");
+g = build(fake, "flux3-image-klein-int8-convert.safetensors", true);
+assert.deepStrictEqual([g["1"].class_type, g["1"].inputs.weight_dtype, g["12"].inputs.latent_image], ["UNETLoader", "default", ["10", 2]]);
+assert.ok(!g["20"], "flux3 edit graph has no mask");
+checkLinks(g, "flux3 edit");
+g = build(fake, "flux3-image-klein-base-bf16.safetensors", false);
+assert.deepStrictEqual([g["12"].inputs.steps, g["12"].inputs.cfg], [50, 3.5], "Klein Base runs 50 steps at CFG 3.5");
+g = build(fake, "flux-3-image-klein-UD-Q4_K_XL.gguf", false, { steps: 8 });
+assert.deepStrictEqual([g["12"].inputs.steps, g["12"].inputs.cfg], [8, 1], "Settings' steps win, CFG stays the checkpoint's");
 
 // Flux.1 fill (gguf) and kontext (safetensors): T5 + clip_l, ae VAE
 g = build(fake, "flux1-fill-dev-Q4_K.gguf", false);
@@ -66,7 +85,9 @@ assert.deepStrictEqual([g["1"].class_type, g["1"].inputs.weight_dtype, g["15"].i
 const byName = Object.fromEntries(M.listModels(fake).map((m) => [m.name, m.cls]));
 assert.deepStrictEqual(byName, {
   "flux-2-klein-4b-Q5_K_M.gguf": "UnetLoaderGGUF", "flux-2-klein-9b-Q4_K_S.gguf": "UnetLoaderGGUF", "flux1-fill-dev-Q4_K.gguf": "UnetLoaderGGUF",
+  "flux-3-image-klein-UD-Q4_K_XL.gguf": "UnetLoaderGGUF",
   "flux1-kontext-dev-fp8.safetensors": "UNETLoader",
+  "flux3-image-klein-int8-convert.safetensors": "UNETLoader", "flux3-image-klein-base-bf16.safetensors": "UNETLoader",
   "svdq-int4_r32-flux.1-fill-dev.safetensors": "NunchakuFluxDiTLoader", "svdq-int4_r32-flux.1-kontext-dev.safetensors": "NunchakuFluxDiTLoader",
 });
 g = build(fake, "svdq-int4_r32-flux.1-kontext-dev.safetensors", true);
@@ -95,7 +116,8 @@ assert.deepStrictEqual(g["19"].inputs.images, ["18", 0]);
 assert.ok(build(noCM, "flux-2-klein-9b-Q4_K_S.gguf", true), "Edit has no color match, runs without the pack");
 
 // every family x mode builds and all links resolve
-for (const [model, modes] of [["flux-2-klein-9b-Q4_K_S.gguf", [false, true]], ["flux1-kontext-dev-fp8.safetensors", [false, true]], ["flux1-fill-dev-Q4_K.gguf", [false]]]) {
+for (const [model, modes] of [["flux-2-klein-9b-Q4_K_S.gguf", [false, true]], ["flux3-image-klein-int8-convert.safetensors", [false, true]],
+  ["flux1-kontext-dev-fp8.safetensors", [false, true]], ["flux1-fill-dev-Q4_K.gguf", [false]]]) {
   for (const edit of modes) checkLinks(build(fake, model, edit), `${model} edit=${edit}`);
 }
 
@@ -114,6 +136,7 @@ if (fs.existsSync(live)) {
   const live2 = { ...info, NunchakuFluxDiTLoader: fake.NunchakuFluxDiTLoader }; // not installed here
   const cases = [["flux-2-klein-9b-Q4_K_S.gguf", false], ["flux-2-klein-9b-Q4_K_S.gguf", true], ["flux1-kontext-dev-fp8.safetensors", false],
     ["flux1-kontext-dev-fp8.safetensors", true], ["flux1-fill-dev-Q4_K.gguf", false], ["svdq-int4_r32-flux.1-fill-dev.safetensors", false]];
+  if (info.ReferenceMultiLatent) cases.push(["flux-3-image-klein-UD-Q4_K_XL.gguf", false], ["flux3-image-klein-base-bf16.safetensors", true]);
   for (const [model, edit] of cases) {
     const g = build({ ...fake, ...info, UnetLoaderGGUF: fake.UnetLoaderGGUF, UNETLoader: { input: { required: { ...info.UNETLoader.input.required, unet_name: combo(SAFETENSORS) } } },
       NunchakuFluxDiTLoader: fake.NunchakuFluxDiTLoader, CLIPLoaderGGUF: fake.CLIPLoaderGGUF, VAELoader: fake.VAELoader }, model, edit);
@@ -126,7 +149,9 @@ if (fs.existsSync(live)) {
         if (opts && !Array.isArray(v) && !FILE_INPUTS.has(k)) assert.ok(opts.includes(v), `${model}: ${n.class_type}.${k} = ${v} not in ${opts}`);
       }
       for (const [k, v] of Object.entries(n.inputs)) {
-        const known = k in def.input.required || k in (def.input.optional || {});
+        // dotted children of a dynamic input (ReferenceMultiLatent's resolution.megapixels / images.image0) are known too
+        const declared = (key) => key in def.input.required || key in (def.input.optional || {});
+        const known = declared(k) || (k.includes(".") && declared(k.split(".")[0]));
         assert.ok(known, `${model}: ${n.class_type} has no input "${k}"`);
         if (Array.isArray(v) && live2[g[v[0]].class_type].output) {
           assert.ok(v[1] < live2[g[v[0]].class_type].output.length, `${model}: ${id}.${k} uses output ${v[1]} of ${g[v[0]].class_type}`);
@@ -178,6 +203,11 @@ if (fs.existsSync(live)) {
   assert.deepStrictEqual(files(only4b, { model: "flux-2-klein-4b-Q5_K_M.gguf" }), [], "4B has its encoder");
   assert.deepStrictEqual(files(only4b, { model: "flux-2-klein-9b-Q4_K_S.gguf", clip: "Qwen3-4B-Q5_K_M.gguf" }), [], "picked by hand: trusted");
   assert.deepStrictEqual(files(withLists(["Qwen3-8B-Q4_K_M.gguf"], ["ae.safetensors"]), { model: "flux-2-klein-9b-Q4_K_S.gguf" }), ["flux2-vae.safetensors"]);
+  assert.deepStrictEqual(files(fake, { model: "flux-3-image-klein-UD-Q4_K_XL.gguf" }), [], "Flux.3: encoder and VAE are there");
+  assert.deepStrictEqual(files(withLists([], ["flux2-vae.safetensors"]), { model: "flux-3-image-klein-UD-Q4_K_XL.gguf" }),
+    ["qwen3vl_4b_int8_convrot.safetensors"], "Flux.3 needs its Qwen3-VL 4B encoder");
+  assert.deepStrictEqual(files(withLists(["qwen3vl_8b_x.safetensors"], ["flux2-vae.safetensors"]), { model: "flux3-image-klein-int8-convert.safetensors" }),
+    ["qwen3vl_4b_int8_convrot.safetensors"], "only the 4B encoder fits Flux.3");
   assert.deepStrictEqual(files(withLists([], []), { model: "flux1-kontext-dev-fp8.safetensors" }),
     ["t5-v1_1-xxl-encoder-Q4_K_M.gguf", "clip_l.safetensors", "ae.safetensors"], "Flux.1 needs T5 (Q4_K_M GGUF), clip_l, ae");
   assert.ok(M.missingFiles(withLists([], []), { model: "flux1-fill-dev-Q4_K.gguf", clip: M.AUTO, vae: M.AUTO }).every((f) => /^https:\/\/huggingface\.co\//.test(f.url) && f.folder));
@@ -186,15 +216,18 @@ if (fs.existsSync(live)) {
 // disk scan (ComfyUI off): a real portable install's files -> same lists and auto picks as the live loaders
 {
   const files = {
-    unet: ["Flux2-Klein-9B-True-V3-Q4_K.gguf", "flux-2-klein-4b-Q5_K_M.gguf", "flux-2-klein-9b-Q4_K_S.gguf", "qwen-image-2.1-Q4_K_M.gguf"],
-    enc: ["Qwen3-4B-Q5_K_M.gguf", "Qwen3-8B-Q4_K_M.gguf", "clip_g.safetensors", "clip_l.safetensors", "qwen3vl_8b_w4a8_heretic.safetensors", "t5-v1_1-xxl-encoder-Q5_K_S.gguf"],
+    unet: ["Flux2-Klein-9B-True-V3-Q4_K.gguf", "flux-2-klein-4b-Q5_K_M.gguf", "flux-2-klein-9b-Q4_K_S.gguf", "qwen-image-2.1-Q4_K_M.gguf", "flux-3-image-klein-UD-Q4_K_XL.gguf"],
+    enc: ["Qwen3-4B-Q5_K_M.gguf", "Qwen3-8B-Q4_K_M.gguf", "clip_g.safetensors", "clip_l.safetensors", "qwen3vl_4b_int8_convrot.safetensors", "qwen3vl_8b_w4a8_heretic.safetensors", "t5-v1_1-xxl-encoder-Q5_K_S.gguf"],
     vae: ["Qwen_Image-VAE.safetensors", "ae.safetensors", "flux2-vae.safetensors"],
   };
   const info = M.diskInfo(files, ["ComfyUI-GGUF", "comfyui-manager"]);
-  assert.deepStrictEqual(M.listModels(info).map((m) => m.name), files.unet.slice(0, 3));
+  assert.deepStrictEqual(M.listModels(info).map((m) => m.name),
+    ["Flux2-Klein-9B-True-V3-Q4_K.gguf", "flux-2-klein-4b-Q5_K_M.gguf", "flux-2-klein-9b-Q4_K_S.gguf", "flux-3-image-klein-UD-Q4_K_XL.gguf"]);
   const r = M.resolve(info, { model: "flux-2-klein-9b-Q4_K_S.gguf", clip: M.AUTO, vae: M.AUTO });
   assert.strictEqual(r.enc.main, "Qwen3-8B-Q4_K_M.gguf");
   assert.strictEqual(r.vae, "flux2-vae.safetensors");
+  const r3 = M.resolve(info, { model: "flux-3-image-klein-UD-Q4_K_XL.gguf", clip: M.AUTO, vae: M.AUTO });
+  assert.deepStrictEqual([r3.enc.main, r3.vae], ["qwen3vl_4b_int8_convrot.safetensors", "flux2-vae.safetensors"], "Flux.3 never picks the 8B heretic encoder");
   assert.strictEqual(M.listModels(M.diskInfo(files, [])).length, 0, "GGUF files need ComfyUI-GGUF");
 }
 console.log("ok");
