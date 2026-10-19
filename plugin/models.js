@@ -104,6 +104,15 @@ const PACKS = {
   inpaint: { name: "comfyui-inpaint-nodes", url: "https://github.com/Acly/comfyui-inpaint-nodes" },
 };
 
+// Node types one model family's templates need from ComfyUI itself (ids 1-3 are the loaders, picked per model):
+// what missingNodes checks for the "Update ComfyUI" line. fam "" = every template (no model picked yet), so a
+// Flux.2 pick isn't asked to update for the nodes only Flux.3's templates use.
+function coreNodes(templates, fam) {
+  return Object.entries(templates)
+    .filter(([name]) => !fam || name.startsWith(fam + "_"))
+    .flatMap(([, g]) => Object.entries(g).filter(([id]) => !["1", "2", "3"].includes(id)).map(([, n]) => n.class_type));
+}
+
 // What the user should install: [{ name, url, why, required }].
 // files: model file names found on disk (ComfyUI doesn't list .gguf files at all without ComfyUI-GGUF, so only
 // the disk tells they exist). coreNodes: node types the templates use; [] = unknown (ComfyUI offline, disk scan).
@@ -111,7 +120,7 @@ function missingNodes(info, files, coreNodes) {
   const out = [];
   const oldCore = [...new Set(coreNodes)].filter((c) => !info[c] && !c.startsWith("INPAINT_")); // INPAINT_*: the pack below
   if (oldCore.length) {
-    out.push({ name: "Update ComfyUI", url: "https://github.com/comfyanonymous/ComfyUI", required: true, why: `it is too old (missing ${oldCore.join(", ")})` });
+    out.push({ name: "Update ComfyUI", url: "https://github.com/comfyanonymous/ComfyUI", required: true, missing: oldCore, why: `it is too old (missing ${oldCore.join(", ")})` });
   }
   const hasGguf = files.some((n) => /\.gguf$/i.test(n));
   if (!info.UnetLoaderGGUF && (hasGguf || !listModels(info).length)) {
@@ -215,4 +224,4 @@ function applyColorMatch(info, g, strength) {
   g["23"].inputs.strength = strength;
 }
 
-module.exports = { AUTO, TEMPLATES, family, listModels, encoderList, vaeList, pickEncoders, pickVae, resolve, buildGraph, diskInfo, missingNodes, missingFiles };
+module.exports = { AUTO, TEMPLATES, family, listModels, encoderList, vaeList, pickEncoders, pickVae, resolve, buildGraph, diskInfo, coreNodes, missingNodes, missingFiles };

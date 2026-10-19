@@ -20,6 +20,7 @@ let placing = false; // a preview is being placed right now
 let scrolledFor = null; // the previewed result last scrolled into view in the list
 let needs = []; // custom nodes / ComfyUI update to install (checkNodes)
 let downloads = []; // text encoder / VAE files the selected model still needs (showAutoPicks)
+let readyMsg = ""; // the status line readyStatus last showed (a model change may replace it, nothing else may)
 let jobSeq = 0;
 let ws = null;
 let objectInfo = null; // ComfyUI /object_info, cached by loadModels
@@ -281,7 +282,9 @@ function modelPicked() {
   keep("model");
   showAutoPicks();
   render();
-  if ($("dot").className === "dot ok") conn(true, val("model").replace(/\.(gguf|safetensors)$/, ""));
+  const live = $("dot").className === "dot ok"; // which templates' nodes are required follows the picked family
+  if (live) conn(true, val("model").replace(/\.(gguf|safetensors)$/, ""));
+  checkNodes(live).then(() => { if ($("status").textContent === readyMsg) readyStatus(live); }).catch(() => {});
 }
 const fillChecks = () => { $("legacy").checked = !!cfg.legacy; $("autoPreview").checked = cfg.autoPreview !== false; }; // auto preview: on unless turned off
 
@@ -339,6 +342,18 @@ fs.getTemporaryFolder().then(async (t) => {
 }).catch(() => {});
 
 function status(msg, err) { $("status").textContent = msg; $("status").className = "status" + (err ? " err" : ""); }
+// The main view's status line: what the picked model still needs (ComfyUI update / custom nodes / encoder & VAE files),
+// else what to do next. Only the picked model's family counts, so a Flux.2 user isn't asked to update for Flux.3 nodes.
+function readyStatus(live) {
+  const install = needs.filter((m) => m.required)
+    .map((m) => (m.missing ? `${m.name} (missing ${m.missing.join(", ")})` : m.name)).join(", ");
+  const err = !!install || downloads.length > 0;
+  readyMsg = install ? `Install in ComfyUI: ${install} (links in Settings).`
+    : downloads.length ? `This model still needs: ${downloads.map((f) => f.name).join(", ")} (download links in Settings).`
+    : live ? "Make a selection, then click " + ($("mode").value === "auto" ? "the button." : isEdit() ? "Edit." : "Clean.") + "."
+    : "ComfyUI is off: models listed from its folder. It starts on the first Clean.";
+  status(readyMsg, err);
+}
 function fail(e) { status(e.message || String(e), true); }
 // The header pill stays short ("Online", "Offline", "Starting..."): with the model's file name in it the pill ate the
   // tagline's room, and the name is in the MODEL row anyway. The full text is its tooltip.
@@ -370,8 +385,6 @@ async function loadModels() {
     if (!listInfo) throw new Error("ComfyUI not reachable. Start it, or set the ComfyUI folder in Settings to list its models.");
   }
   const live = listInfo === objectInfo;
-  await checkNodes(live);
-  const install = needs.filter((m) => m.required).map((m) => m.name).join(", ");
   const fill = (id, items, auto) => {
     const prev = val(id); // keep an unsaved pick when testing the connection
     if (auto) items = [{ value: models.AUTO, label: "Auto" }].concat(items);
@@ -382,20 +395,20 @@ async function loadModels() {
   const tag = { flux2: "Klein", flux3: "Flux.3 Klein", kontext: "Kontext", fill: "Fill" };
   const list = models.listModels(listInfo);
   if (!list.length) {
+    await checkNodes(live); // no model picked: the needs of every template count
+    const install = needs.filter((m) => m.required).map((m) => m.name).join(", ");
     throw new Error(install ? `No usable model. Install in ComfyUI: ${install} (links in Settings).`
       : `No Flux.2 / Flux.3 Klein, Kontext or Fill model found in ${live ? "ComfyUI" : "the ComfyUI models folder"}.`);
   }
   fill("model", list.map((m) => ({ value: m.name, label: `${m.name}  (${tag[m.family]}${m.nunchaku ? ", Nunchaku" : ""})` })));
+  await checkNodes(live); // the model is picked first: only its family's templates decide what is missing
   mirrorModels();
   fill("clip", models.encoderList(listInfo).map((n) => ({ value: n, label: n })), true);
   fill("vae", models.vaeList(listInfo).map((n) => ({ value: n, label: n })), true);
   showAutoPicks();
   render(); // main view shows the picked model
   if (live) conn(true, val("model").replace(/\.(gguf|safetensors)$/, ""));
-  status(live ? "Make a selection, then click " + ($("mode").value === "auto" ? "the button." : isEdit() ? "Edit." : "Clean.")
-    : "ComfyUI is off: models listed from its folder. It starts on the first Clean.");
-  if (install) status(`Install in ComfyUI: ${install} (links in Settings).`, true);
-  else if (downloads.length) status(`This model still needs: ${downloads.map((f) => f.name).join(", ")} (download links in Settings).`, true);
+  readyStatus(live);
   return live;
 }
 
@@ -405,9 +418,9 @@ async function checkNodes(live) {
   const disk = live ? await scanModels(val("comfyDir").trim().replace(/[\\/]+$/, "")).catch(() => null) : listInfo;
   const list = (cls, input) => (disk && disk[cls] ? disk[cls].input.required[input][0] : []);
   const files = list("UNETLoader", "unet_name").concat(list("CLIPLoader", "clip_name"));
-  // node types the templates need from ComfyUI itself (1-3 = loaders, picked per model); unknown while offline
-  const core = live ? Object.values(await loadTemplates())
-    .flatMap((g) => Object.entries(g).filter(([id]) => !["1", "2", "3"].includes(id)).map(([, n]) => n.class_type)) : [];
+  // node types the picked model's templates need from ComfyUI itself (1-3 = loaders, picked per model); all templates
+  // while nothing is picked, none while offline
+  const core = live ? models.coreNodes(await loadTemplates(), models.family(val("model") || "")) : [];
   needs = models.missingNodes(listInfo, files, core);
   const box = $("needs");
   box.innerHTML = "";

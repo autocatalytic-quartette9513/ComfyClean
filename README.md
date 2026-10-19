@@ -224,7 +224,7 @@ The text encoder size must match the model: **Klein 4B → Qwen3-4B**, **Klein 9
 <details>
 <summary>🆕 Flux.3: "Update ComfyUI (missing ReferenceMultiLatent)"</summary>
 
-FLUX 3 Klein needs **ComfyUI 0.41 or newer** (the `Set Reference Multi Latent` node ships with it). Update ComfyUI, restart it, then pick the model again. Its text encoder is Qwen3-VL 4B (`qwen3vl_4b_*.safetensors`) and it reuses the Flux.2 VAE; Settings links the exact files if one is missing.
+FLUX 3 Klein needs **ComfyUI 0.41 or newer** (the `Set Reference Multi Latent` node ships with it). Update ComfyUI, restart it, then pick the model again. Its text encoder is Qwen3-VL 4B (`qwen3vl_4b_*.safetensors`) and it reuses the Flux.2 VAE; Settings links the exact files if one is missing. The panel only asks for the update while a Flux.3 model is picked (and names the missing node): Flux.2 / Kontext / Fill keep working on older ComfyUI builds.
 </details>
 
 <details>
@@ -486,7 +486,7 @@ Settings نام دقیق فایل‌ها و لینکشان را نشان می‌
 <details>
 <summary>🆕 Flux.3: پیام «Update ComfyUI (missing ReferenceMultiLatent)»</summary>
 
-مدل FLUX 3 Klein به **ComfyUI نسخهٔ 0.41 یا بالاتر** نیاز دارد (نود `Set Reference Multi Latent` همراه همان نسخه عرضه شده). ComfyUI را به‌روز کنید، دوباره اجرایش کنید و مدل را از نو انتخاب کنید. انکودر متنش Qwen3-VL 4B است (`qwen3vl_4b_*.safetensors`) و از همان VAE مدل Flux.2 استفاده می‌کند؛ اگر فایلی کم باشد Settings لینکش را نشان می‌دهد.
+مدل FLUX 3 Klein به **ComfyUI نسخهٔ 0.41 یا بالاتر** نیاز دارد (نود `Set Reference Multi Latent` همراه همان نسخه عرضه شده). ComfyUI را به‌روز کنید، دوباره اجرایش کنید و مدل را از نو انتخاب کنید. انکودر متنش Qwen3-VL 4B است (`qwen3vl_4b_*.safetensors`) و از همان VAE مدل Flux.2 استفاده می‌کند؛ اگر فایلی کم باشد Settings لینکش را نشان می‌دهد. پنل فقط وقتی که مدل Flux.3 انتخاب شده باشد این پیام را می‌دهد (و اسم نودِ غایب را هم می‌نویسد): Flux.2 / Kontext / Fill روی ComfyUI قدیمی‌تر هم کار می‌کنند.
 </details>
 
 <details>

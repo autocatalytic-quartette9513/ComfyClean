@@ -177,13 +177,28 @@ if (fs.existsSync(live)) {
   const needs = M.missingNodes(fake, [], ["ReferenceLatent", "ReferenceLatent", "INPAINT_ColorMatch"]); // fake has no core nodes
   assert.deepStrictEqual(names(needs), ["Update ComfyUI"]);
   assert.ok(/missing ReferenceLatent\)$/.test(needs[0].why), "missing core nodes named once; INPAINT_* is the pack, not core");
+  assert.deepStrictEqual(needs[0].missing, ["ReferenceLatent"], "the panel names the node in the main view too");
+  // which templates count follows the picked model's family: Flux.3's ReferenceMultiLatent (ComfyUI 0.41+) is never
+  // asked of a Flux.2 user, even though the Flux.3 templates are in the same plugin
+  const all = M.coreNodes(templates, "");
+  assert.ok(all.includes("ReferenceMultiLatent") && all.includes("Flux2Scheduler"), "templates cover both families");
+  assert.ok(!M.coreNodes(templates, "flux2").includes("ReferenceMultiLatent"), "Flux.2 templates never use it");
+  const noRef = { INPAINT_ColorMatch: { input: { required: {} } },
+    UNETLoader: { input: { required: { unet_name: [["flux-2-klein-9b.safetensors"]] } } },
+    CLIPLoader: { input: { required: { clip_name: [["qwen_3_8b.safetensors"]] } } },
+    VAELoader: { input: { required: { vae_name: [["flux2-vae.safetensors"]] } } },
+    ...Object.fromEntries([...new Set(all)].filter((c) => c !== "ReferenceMultiLatent" && !c.startsWith("INPAINT_")).map((c) => [c, { input: { required: {} } }])) };
+  assert.deepStrictEqual(names(M.missingNodes(noRef, [], M.coreNodes(templates, "flux2"))), [], "old ComfyUI + Flux.2 model: nothing to install");
+  const refNeeded = M.missingNodes(noRef, [], M.coreNodes(templates, "flux3"));
+  assert.deepStrictEqual(names(refNeeded), ["Update ComfyUI"], "old ComfyUI + Flux.3 model: the update is named");
+  assert.deepStrictEqual(refNeeded[0].missing, ["ReferenceMultiLatent"], "with the node that is missing");
   const noPack = M.missingNodes(without(fake, "INPAINT_ColorMatch"), [], []);
   assert.deepStrictEqual(names(noPack), ["comfyui-inpaint-nodes"], "inpaint nodes: required even while ComfyUI is off");
   assert.ok(noPack[0].required);
   assert.ok(M.diskInfo({ unet: [], enc: [], vae: [] }, ["comfyui-inpaint-nodes"]).INPAINT_ColorMatch, "disk scan sees the pack folder");
   if (fs.existsSync(live)) { // the real ComfyUI here has everything the templates need
     const info = JSON.parse(fs.readFileSync(live, "utf8"));
-    const core = Object.values(templates).flatMap((g) => Object.entries(g).filter(([id]) => !["1", "2", "3"].includes(id)).map(([, n]) => n.class_type));
+    const core = M.coreNodes(templates, ""); // every family: the real ComfyUI here has everything the templates need
     assert.deepStrictEqual(names(M.missingNodes(info, ["flux-2-klein-9b-Q4_K_S.gguf"], core)), [], "live ComfyUI: nothing to install");
   }
 }

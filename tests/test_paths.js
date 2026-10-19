@@ -88,7 +88,8 @@ async function run(withImaging) {
   global.fetch = async () => ({ ok: true, json: async () => oldComfy });
   assert.strictEqual(await P.loadModels(), true, "connected");
   assert.deepStrictEqual(P.needs().map((m) => m.name), ["Update ComfyUI", "comfyui-inpaint-nodes"]);
-  assert.ok(/Install in ComfyUI: Update ComfyUI/.test(els.status.textContent), "main view says what to install: " + els.status.textContent);
+  assert.ok(/Install in ComfyUI: Update ComfyUI \(missing [^)]+\), comfyui-inpaint-nodes \(links in Settings\)\./.test(els.status.textContent),
+    "main view says what to install, and the node that is missing: " + els.status.textContent);
   global.fetch = () => Promise.reject(new Error("offline"));
 
   // Settings save themselves: a change is written at once, Back saves too, models are listed again only when the
